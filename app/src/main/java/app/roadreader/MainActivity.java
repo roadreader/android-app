@@ -6,11 +6,13 @@ import android.app.ActionBar;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.hardware.Camera;
 import android.location.Location;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
@@ -22,6 +24,9 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
+import android.view.animation.LinearInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -48,8 +53,12 @@ public class MainActivity extends AppCompatActivity {
     protected Camera.CameraInfo mCameraInfo;
     protected CameraPreview mPreview;
     protected FrameLayout preview;
+    protected ImageView redDot;
+    protected Animation redDotAnimation;
     protected Button record;
+    protected Picturetask takePictures;
     private static final int REQUEST_CAMERA_PERMISSION = 200;
+    protected int btnState = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,6 +68,11 @@ public class MainActivity extends AppCompatActivity {
         this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
         setContentView(R.layout.activity_main);
+
+        redDot = (ImageView)findViewById(R.id.redDot);
+        redDot.setVisibility(View.INVISIBLE);
+
+
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -80,25 +94,46 @@ public class MainActivity extends AppCompatActivity {
                 preview = (FrameLayout) findViewById(R.id.camera_preview);
                 preview.addView(mPreview);
 
+                //milliseconds -- 5fps
+                takePictures = new Picturetask(200);
 
                 record = (Button)findViewById(R.id.button_capture);
                 record.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        LatLng ll = getRandomLocation();
 
-                        //mCamera.takePicture(null,null,mPicture);
-                        writeData(0);
-                        Toast toast = Toast.makeText(getApplicationContext(),ll.toString(),Toast.LENGTH_SHORT);
-                        toast.show();
+                        if(btnState == 0) {
+                            startRedDotAnimation();
+                            btnState = 1;
+                            record.setText("Stop");
+                            takePictures.execute();
+                        }
+                        else if(btnState == 1){
+                            takePictures.cancelPicture();
+                            cancelRedDotAnimation();
+                            btnState = 0;
+                            record.setText("Record");
+                        }
                     }
                 });
-
             }
         }
-
     }
 
+    private void startRedDotAnimation() {
+        redDot.setVisibility(View.VISIBLE);
+        redDotAnimation = new AlphaAnimation(1, 0); // Change alpha from fully visible to invisible
+        redDotAnimation.setDuration(1000); // duration - half a second
+        redDotAnimation.setInterpolator(new LinearInterpolator()); // do not alter animation rate
+        redDotAnimation.setRepeatCount(Animation.INFINITE); // Repeat animation infinitely
+        redDotAnimation.setRepeatMode(Animation.REVERSE); // Reverse animation at the end so the button will fade back in
+        redDot.startAnimation(redDotAnimation);
+    }
+
+    private void cancelRedDotAnimation() {
+        redDotAnimation.cancel();
+        redDot.setVisibility(View.INVISIBLE);
+    }
     private void writeData(int flag){
 
         final File directory = this.getFilesDir();
@@ -128,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
         for(int i = 0; i < files.length; i++){
             String name = files[i].getName();
 
-
         }
 
 
@@ -136,7 +170,6 @@ public class MainActivity extends AppCompatActivity {
 
 
     private Camera.PictureCallback mPicture = new Camera.PictureCallback() {
-
 
         @Override
         public void onPictureTaken(byte[] data, Camera camera) {
@@ -152,12 +185,13 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
 
+            /*
             Bitmap bmp = BitmapFactory.decodeByteArray(data, 0, data.length);
             Bitmap mutableBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
             ImageView iv = new ImageView(MainActivity.this);
             iv.setImageBitmap(mutableBitmap);
             preview.addView(iv);
-
+            */
 
         }
     };
@@ -181,7 +215,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return cameraId;
     }
-
 
     private boolean checkCameraHardware(Context context) {
         if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA)){
@@ -327,6 +360,39 @@ public class MainActivity extends AppCompatActivity {
             }else{
 
             }
+        }
+    }
+
+    private class Picturetask extends AsyncTask<Void,Void,Void> {
+
+        private long timeout;
+        private volatile boolean wait = true;
+
+        public Picturetask(long timeout){
+            this.timeout = timeout;
+        }
+
+        @Override
+        protected Void doInBackground(Void... arg0) {
+            takePicture();
+            return null;
+        }
+
+        private void takePicture(){
+
+            while(wait){
+                mCamera.takePicture(null, null, mPicture);
+                try {
+                    Thread.sleep(timeout);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    break;
+                }
+            }
+        }
+
+        public void cancelPicture(){
+            this.wait = false;
         }
     }
 
