@@ -306,7 +306,7 @@ public class MainActivity extends AppCompatActivity {
 
             FileOutputStream outputStream;
             String latlng = String.valueOf(getRandomLocation().latitude) + '_' + String.valueOf(getRandomLocation().longitude);
-            String filename = latlng + ".png";
+            String filename = latlng + ".jpg";
             currentImageName = filename;
 
             try {
