@@ -35,10 +35,22 @@ import android.widget.Toast;
 
 import com.google.android.gms.maps.model.LatLng;
 
+import org.apache.http.entity.mime.HttpMultipartMode;
+import org.apache.http.entity.mime.MultipartEntity;
+import org.apache.http.entity.mime.content.ByteArrayBody;
+import org.apache.http.entity.mime.content.ContentBody;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -59,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
     protected Picturetask takePictures;
     private static final int REQUEST_CAMERA_PERMISSION = 200;
     protected int btnState = 0;
+    protected String currentImageName = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -95,13 +108,42 @@ public class MainActivity extends AppCompatActivity {
                 preview.addView(mPreview);
 
                 //milliseconds -- 5fps
-                takePictures = new Picturetask(200);
+                //takePictures = new Picturetask(200);
 
                 record = (Button)findViewById(R.id.button_capture);
                 record.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
 
+                        if(btnState == 0){
+                            btnState = 1;
+                            record.setText("Send");
+
+                            MainActivity.this.runOnUiThread(new Runnable() {
+                                public void run() {
+                                    mCamera.takePicture(null,null, mPicture);
+                                    //testData();
+
+                                }
+                            });
+
+
+                        }else if(btnState == 1){
+                            btnState = 0;
+                            record.setText("Record");
+
+                            Thread myUploadTask = new Thread(new Runnable(){
+                                public void run(){
+                                    sendData();
+                                }
+                            });
+                            myUploadTask.start();
+
+                            mCamera.startPreview();
+
+                        }
+
+                        /*
                         if(btnState == 0) {
                             startRedDotAnimation();
                             btnState = 1;
@@ -114,10 +156,91 @@ public class MainActivity extends AppCompatActivity {
                             btnState = 0;
                             record.setText("Record");
                         }
+                        */
+
+
                     }
                 });
             }
         }
+    }
+
+    private void testData(){
+        File directory = MainActivity.this.getFilesDir();
+        File file = new File(directory, currentImageName);
+        String filePath = file.getAbsolutePath();
+
+        Toast toast = Toast.makeText(getApplicationContext(),filePath,Toast.LENGTH_SHORT);
+        toast.show();
+
+    }
+
+    private void sendData() {
+        File directory = MainActivity.this.getFilesDir();
+        File file = new File(directory, currentImageName);
+        String filePath = file.getAbsolutePath();
+        Bitmap bitmap = BitmapFactory.decodeFile(filePath);
+
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, bos);
+        ContentBody contentPart = new ByteArrayBody(bos.toByteArray(), currentImageName);
+
+        MultipartEntity reqEntity = new MultipartEntity(HttpMultipartMode.BROWSER_COMPATIBLE);
+        reqEntity.addPart("picture", contentPart);
+        String response = multipost("http://ec2-34-224-89-123.compute-1.amazonaws.com:3000/upload", reqEntity);
+    }
+
+    private static String multipost(String urlString, MultipartEntity reqEntity) {
+        try {
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setReadTimeout(10000);
+            conn.setConnectTimeout(15000);
+            conn.setRequestMethod("POST");
+            conn.setUseCaches(false);
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+
+            conn.setRequestProperty("Connection", "Keep-Alive");
+            conn.addRequestProperty("Content-length", reqEntity.getContentLength()+"");
+            conn.addRequestProperty(reqEntity.getContentType().getName(), reqEntity.getContentType().getValue());
+
+            OutputStream os = conn.getOutputStream();
+            reqEntity.writeTo(conn.getOutputStream());
+            os.close();
+            conn.connect();
+
+            if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                return readStream(conn.getInputStream());
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "multipart post error " + e + "(" + urlString + ")");
+        }
+        return null;
+    }
+
+    private static String readStream(InputStream in) {
+        BufferedReader reader = null;
+        StringBuilder builder = new StringBuilder();
+        try {
+            reader = new BufferedReader(new InputStreamReader(in));
+            String line = "";
+            while ((line = reader.readLine()) != null) {
+                builder.append(line);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return builder.toString();
     }
 
     private void startRedDotAnimation() {
@@ -168,6 +291,13 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    protected void resetPreview(){
+        mCamera.stopPreview();
+        mPreview = new CameraPreview(this, mCamera);
+        preview.removeAllViews();
+        preview.addView(mPreview);
+    }
+
 
     private Camera.PictureCallback mPicture = new Camera.PictureCallback() {
 
@@ -175,7 +305,9 @@ public class MainActivity extends AppCompatActivity {
         public void onPictureTaken(byte[] data, Camera camera) {
 
             FileOutputStream outputStream;
-            String filename = "testimage.jpg";
+            String latlng = String.valueOf(getRandomLocation().latitude) + '_' + String.valueOf(getRandomLocation().longitude);
+            String filename = latlng + ".png";
+            currentImageName = filename;
 
             try {
                 outputStream = openFileOutput(filename, Context.MODE_PRIVATE);
@@ -184,14 +316,6 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
-            /*
-            Bitmap bmp = BitmapFactory.decodeByteArray(data, 0, data.length);
-            Bitmap mutableBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
-            ImageView iv = new ImageView(MainActivity.this);
-            iv.setImageBitmap(mutableBitmap);
-            preview.addView(iv);
-            */
 
         }
     };
