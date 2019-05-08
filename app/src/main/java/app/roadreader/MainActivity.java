@@ -72,97 +72,38 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_CAMERA_PERMISSION = 200;
     protected int btnState = 0;
     protected String currentImageName = "";
+    public SensorListener sensor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        sensor = new SensorListener(this);
 
-        setContentView(R.layout.activity_main);
+    }
 
-        redDot = (ImageView)findViewById(R.id.redDot);
-        redDot.setVisibility(View.INVISIBLE);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        sensor.resume();
+    }
 
+    @Override
+    protected void onStart() {
+        super.onStart();
+        sensor.start();
+    }
 
+    @Override
+    protected void onStop() {
+        super.onStop();
+        sensor.stop();
+    }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[] {Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
-            }else{
-                if(checkCameraHardware(this)){
-                    mCamera = getCameraInstance();
-                }
-
-                findBackFacingCamera();
-                mCamera.setDisplayOrientation(getCorrectCameraOrientation(mCameraInfo,mCamera));
-
-                Camera.Parameters parameters = mCamera.getParameters();
-                parameters.setRotation(getCorrectCameraOrientation(mCameraInfo, mCamera));
-                parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
-                mCamera.setParameters(parameters);
-
-                mPreview = new CameraPreview(this, mCamera);
-                preview = (FrameLayout) findViewById(R.id.camera_preview);
-                preview.addView(mPreview);
-
-                //milliseconds -- 5fps
-                //takePictures = new Picturetask(200);
-
-                record = (Button)findViewById(R.id.button_capture);
-                record.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-
-                        if(btnState == 0){
-                            btnState = 1;
-                            record.setText("Send");
-
-                            MainActivity.this.runOnUiThread(new Runnable() {
-                                public void run() {
-                                    mCamera.takePicture(null,null, mPicture);
-                                    //testData();
-
-                                }
-                            });
-
-
-                        }else if(btnState == 1){
-                            btnState = 0;
-                            record.setText("Record");
-
-                            Thread myUploadTask = new Thread(new Runnable(){
-                                public void run(){
-                                    sendData();
-                                }
-                            });
-                            myUploadTask.start();
-
-                            mCamera.startPreview();
-
-                        }
-
-                        /*
-                        if(btnState == 0) {
-                            startRedDotAnimation();
-                            btnState = 1;
-                            record.setText("Stop");
-                            takePictures.execute();
-                        }
-                        else if(btnState == 1){
-                            takePictures.cancelPicture();
-                            cancelRedDotAnimation();
-                            btnState = 0;
-                            record.setText("Record");
-                        }
-                        */
-
-
-                    }
-                });
-            }
-        }
+    @Override
+    protected void onPause() {
+        super.onPause();
+        sensor.pause();
     }
 
     private void testData(){
